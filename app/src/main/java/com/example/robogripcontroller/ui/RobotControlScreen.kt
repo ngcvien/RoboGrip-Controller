@@ -96,8 +96,9 @@ fun RobotControlScreen(
 
     var showConnectionDialog by remember { mutableStateOf(false) }
 
-    var currentArmAxis1 by remember { mutableIntStateOf(0) }
-    var currentArmAxis2 by remember { mutableIntStateOf(0) }
+    var currentLiftAxis by remember { mutableIntStateOf(0) }
+    var currentGripAxis by remember { mutableIntStateOf(0) }
+    var isGripHolding by remember { mutableStateOf(false) }
 
     if (showConnectionDialog) {
         ConnectionDialog(
@@ -117,6 +118,8 @@ fun RobotControlScreen(
             gyroController.stop()
         }
     }
+
+
     fun normalizeCommand(command: String): String {
         return command.trim()
     }
@@ -164,6 +167,18 @@ fun RobotControlScreen(
         if (recordable) {
             recordMacroCommand(command)
         }
+    }
+    fun sendArmState(
+        liftAxis: Int = currentLiftAxis,
+        gripAxis: Int = currentGripAxis,
+        saveToHistory: Boolean = true,
+        recordable: Boolean = true
+    ) {
+        sendNormalCommand(
+            command = RobotCommand.arm(liftAxis, gripAxis),
+            saveToHistory = saveToHistory,
+            recordable = recordable
+        )
     }
 
     fun sendRealtimeCommand(
@@ -392,12 +407,55 @@ fun RobotControlScreen(
                             onSpeedChange = { speed = it },
                             armSpeed = armSpeed,
                             onArmSpeedChange = { armSpeed = it },
-                            onArmCommand = { axis1, axis2 ->
-                                currentArmAxis1 = axis1
-                                currentArmAxis2 = axis2
+                            isGripHolding = isGripHolding,
 
-                                sendNormalCommand(
-                                    command = RobotCommand.arm(axis1, axis2),
+                            onLiftChange = { lift ->
+                                currentLiftAxis = lift
+
+                                sendArmState(
+                                    liftAxis = currentLiftAxis,
+                                    gripAxis = currentGripAxis,
+                                    saveToHistory = true,
+                                    recordable = true
+                                )
+                            },
+
+                            onGripHold = {
+                                isGripHolding = true
+                                currentGripAxis = -armSpeed
+
+                                sendArmState(
+                                    liftAxis = currentLiftAxis,
+                                    gripAxis = currentGripAxis,
+                                    saveToHistory = true,
+                                    recordable = true
+                                )
+                            },
+
+                            onGripOpenChanged = { pressed ->
+                                if (pressed) {
+                                    isGripHolding = false
+                                    currentGripAxis = armSpeed
+                                } else {
+                                    currentGripAxis = 0
+                                }
+
+                                sendArmState(
+                                    liftAxis = currentLiftAxis,
+                                    gripAxis = currentGripAxis,
+                                    saveToHistory = true,
+                                    recordable = true
+                                )
+                            },
+
+                            onStopArm = {
+                                isGripHolding = false
+                                currentLiftAxis = 0
+                                currentGripAxis = 0
+
+                                sendArmState(
+                                    liftAxis = 0,
+                                    gripAxis = 0,
                                     saveToHistory = true,
                                     recordable = true
                                 )
@@ -590,7 +648,11 @@ private fun RightDashboard(
     onSpeedChange: (Int) -> Unit,
     armSpeed: Int,
     onArmSpeedChange: (Int) -> Unit,
-    onArmCommand: (axis1: Int, axis2: Int) -> Unit,
+    isGripHolding: Boolean,
+    onLiftChange: (Int) -> Unit,
+    onGripHold: () -> Unit,
+    onGripOpenChanged: (Boolean) -> Unit,
+    onStopArm: () -> Unit,
     isRecording: Boolean,
     isReplaying: Boolean,
     recordedCommands: List<RecordedCommand>,
@@ -635,8 +697,12 @@ private fun RightDashboard(
 
             ArmControlPanel(
                 armSpeed = armSpeed,
+                isGripHolding = isGripHolding,
                 onArmSpeedChange = onArmSpeedChange,
-                onArmCommand = onArmCommand
+                onLiftChange = onLiftChange,
+                onGripHold = onGripHold,
+                onGripOpenChanged = onGripOpenChanged,
+                onStopArm = onStopArm
             )
 
             MacroPanel(

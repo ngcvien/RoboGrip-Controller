@@ -2,34 +2,32 @@ package com.example.robogripcontroller.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import kotlin.math.roundToInt
 
 @Composable
 fun ArmControlPanel(
     armSpeed: Int,
+    isGripHolding: Boolean,
     onArmSpeedChange: (Int) -> Unit,
-    onArmCommand: (axis1: Int, axis2: Int) -> Unit
+    onLiftChange: (Int) -> Unit,
+    onGripHold: () -> Unit,
+    onGripOpenChanged: (Boolean) -> Unit,
+    onStopArm: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -41,8 +39,7 @@ fun ArmControlPanel(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column {
                 Text(
@@ -53,19 +50,38 @@ fun ArmControlPanel(
                 )
 
                 Text(
-                    text = "2-axis gripper",
-                    color = AppColors.TextMuted,
-                    fontSize = 12.sp
+                    text = if (isGripHolding) {
+                        "Gripper holding object"
+                    } else {
+                        "Lift + latch gripper"
+                    },
+                    color = if (isGripHolding) AppColors.Primary else AppColors.TextMuted,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
 
-            Text(
-                text = "$armSpeed",
-                color = AppColors.Primary,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Black
-            )
+            Button(
+                onClick = onStopArm,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = AppColors.Danger,
+                    contentColor = AppColors.TextMain
+                ),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text(
+                    text = "STOP ARM",
+                    fontWeight = FontWeight.Black
+                )
+            }
         }
+
+        Text(
+            text = "Arm speed: $armSpeed",
+            color = AppColors.TextMain,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold
+        )
 
         Slider(
             value = armSpeed.toFloat(),
@@ -77,19 +93,21 @@ fun ArmControlPanel(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            ArmHoldButton(
+            HoldButton(
                 text = "NÂNG",
                 modifier = Modifier.weight(1f),
+                height = 56.dp,
                 onHoldChanged = { pressed ->
-                    onArmCommand(if (pressed) armSpeed else 0, 0)
+                    onLiftChange(if (pressed) armSpeed else 0)
                 }
             )
 
-            ArmHoldButton(
+            HoldButton(
                 text = "HẠ",
                 modifier = Modifier.weight(1f),
+                height = 56.dp,
                 onHoldChanged = { pressed ->
-                    onArmCommand(if (pressed) -armSpeed else 0, 0)
+                    onLiftChange(if (pressed) -armSpeed else 0)
                 }
             )
         }
@@ -98,64 +116,37 @@ fun ArmControlPanel(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            ArmHoldButton(
+            Button(
+                modifier = Modifier.weight(1f),
+                onClick = onGripHold,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isGripHolding) {
+                        AppColors.Primary
+                    } else {
+                        AppColors.SurfaceSoft
+                    },
+                    contentColor = if (isGripHolding) {
+                        AppColors.Background
+                    } else {
+                        AppColors.TextMain
+                    }
+                ),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Text(
+                    text = if (isGripHolding) "ĐANG GẮP" else "GẮP / GIỮ",
+                    fontWeight = FontWeight.Black
+                )
+            }
+
+            HoldButton(
                 text = "MỞ",
                 modifier = Modifier.weight(1f),
+                height = 56.dp,
                 onHoldChanged = { pressed ->
-                    onArmCommand(0, if (pressed) armSpeed else 0)
-                }
-            )
-
-            ArmHoldButton(
-                text = "ĐÓNG",
-                modifier = Modifier.weight(1f),
-                onHoldChanged = { pressed ->
-                    onArmCommand(0, if (pressed) -armSpeed else 0)
+                    onGripOpenChanged(pressed)
                 }
             )
         }
-    }
-}
-
-@Composable
-private fun ArmHoldButton(
-    text: String,
-    modifier: Modifier = Modifier,
-    onHoldChanged: (Boolean) -> Unit
-) {
-    val haptic = LocalHapticFeedback.current
-    val shape = RoundedCornerShape(16.dp)
-
-    Box(
-        modifier = modifier
-            .height(48.dp)
-            .border(1.dp, AppColors.Primary.copy(alpha = 0.65f), shape)
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        AppColors.PrimarySoft,
-                        AppColors.SurfaceStrong
-                    )
-                ),
-                shape = shape
-            )
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onPress = {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        onHoldChanged(true)
-                        tryAwaitRelease()
-                        onHoldChanged(false)
-                    }
-                )
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = text,
-            color = AppColors.TextMain,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Black
-        )
     }
 }
