@@ -21,8 +21,12 @@ import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.io.OutputStream
 import java.util.UUID
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 private val SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+private val writeMutex = Mutex()
+private var realtimeJob: Job? = null
 
 data class BtDeviceUi(
     val name: String,
@@ -65,6 +69,64 @@ class BluetoothController(
 
     fun setAutoReconnect(enabled: Boolean) {
         _uiState.value = _uiState.value.copy(autoReconnectEnabled = enabled)
+    }
+
+    fun sendRealtime(command: String) {
+        val cleanCommand = normalizeCommand(command)
+
+        realtimeJob?.cancel()
+
+        realtimeJob = scope.launch(Dispatchers.IO) {
+            writeMutex.withLock {
+                writeRawCommand(
+                    cleanCommand = cleanCommand,
+                    saveToHistory = false
+                )
+            }
+        }
+    }
+
+    private fun normalizeCommand(command: String): String {
+        return if (command.endsWith("\n")) {
+            command
+        } else {
+            "$command\n"
+        }
+    }
+
+    private fun writeRawCommand(
+        cleanCommand: String,
+        saveToHistory: Boolean
+    ) {
+        try {
+            val stream = outputStream
+
+            if (stream == null) {
+                _uiState.value = _uiState.value.copy(
+                    errorMessage = "Chưa kết nối Bluetooth"
+                )
+                return
+            }
+
+            stream.write(cleanCommand.toByteArray())
+            stream.flush()
+
+            if (saveToHistory) {
+                val historyText = cleanCommand.trim()
+
+                _uiState.value = _uiState.value.copy(
+                    commandHistory = listOf(historyText) +
+                            _uiState.value.commandHistory.take(19)
+                )
+            }
+        } catch (e: Exception) {
+            closeCurrentSocket()
+
+            _uiState.value = _uiState.value.copy(
+                status = ConnectionStatus.ERROR,
+                errorMessage = e.message ?: "Gửi lệnh Bluetooth thất bại"
+            )
+        }
     }
 
     fun hasBluetoothConnectPermission(): Boolean {
@@ -195,22 +257,15 @@ class BluetoothController(
         }
     }
 
-    fun send(command: String, saveToHistory: Boolean = true) {
-        val stream = outputStream ?: return
+    fun send(command: String, saveToHistory: Boolean = false) {
+        val cleanCommand = normalizeCommand(command)
+
         scope.launch(Dispatchers.IO) {
-            try {
-                stream.write(command.toByteArray())
-                stream.flush()
-                if (saveToHistory) addHistory(command.trim())
-            } catch (e: IOException) {
-                closeCurrentSocket()
-                _uiState.value = _uiState.value.copy(
-                    status = ConnectionStatus.ERROR,
-                    errorMessage = "Mất kết nối Bluetooth"
+            writeMutex.withLock {
+                writeRawCommand(
+                    cleanCommand = cleanCommand,
+                    saveToHistory = saveToHistory
                 )
-                if (_uiState.value.autoReconnectEnabled) {
-                    _uiState.value.selectedDevice?.let { connect(it) }
-                }
             }
         }
     }

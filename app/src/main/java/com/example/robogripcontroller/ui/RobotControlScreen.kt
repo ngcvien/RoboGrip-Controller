@@ -51,6 +51,12 @@ import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.rememberCoroutineScope
+import com.example.robogripcontroller.macro.RecordedCommand
+import kotlinx.coroutines.launch
+
 enum class ControlMode {
     JOYSTICK,
     GYRO
@@ -69,6 +75,15 @@ fun RobotControlScreen(
     var speed by remember { mutableIntStateOf(180) }
     var armSpeed by remember { mutableIntStateOf(180) }
 
+    val scope = rememberCoroutineScope()
+
+    var isRecording by remember { mutableStateOf(false) }
+    var isReplaying by remember { mutableStateOf(false) }
+    var lastRecordTimeMs by remember { mutableLongStateOf(0L) }
+    var lastRecordedCommand by remember { mutableStateOf("") }
+
+    val recordedCommands = remember { mutableStateListOf<RecordedCommand>() }
+
     var joystickForward by remember { mutableIntStateOf(0) }
     var joystickTurn by remember { mutableIntStateOf(0) }
     var gyroForward by remember { mutableIntStateOf(0) }
@@ -85,17 +100,142 @@ fun RobotControlScreen(
 
     var showConnectionDialog by remember { mutableStateOf(false) }
 
+    var currentArmAxis1 by remember { mutableIntStateOf(0) }
+    var currentArmAxis2 by remember { mutableIntStateOf(0) }
+
     if (showConnectionDialog) {
         ConnectionDialog(
             bluetoothController = bluetoothController,
             onDismiss = { showConnectionDialog = false }
         )
     }
+    fun normalizeCommand(command: String): String {
+        return command.trim()
+    }
+
+    fun recordMacroCommand(command: String) {
+        if (!isRecording || isReplaying) return
+
+        val cleanCommand = normalizeCommand(command)
+        if (cleanCommand.isBlank()) return
+
+        val now = System.currentTimeMillis()
+
+        // Tránh ghi quá dày cùng một lệnh, làm replay bị nặng và trễ
+        if (cleanCommand == lastRecordedCommand && now - lastRecordTimeMs < 120) {
+            return
+        }
+
+        val delayMs = if (recordedCommands.isEmpty()) {
+            0L
+        } else {
+            (now - lastRecordTimeMs).coerceIn(0L, 1000L)
+        }
+
+        recordedCommands.add(
+            RecordedCommand(
+                delayMs = delayMs,
+                command = cleanCommand
+            )
+        )
+
+        lastRecordTimeMs = now
+        lastRecordedCommand = cleanCommand
+    }
+
+    fun sendNormalCommand(
+        command: String,
+        saveToHistory: Boolean = false,
+        recordable: Boolean = true
+    ) {
+        bluetoothController.send(
+            command = command,
+            saveToHistory = saveToHistory
+        )
+
+        if (recordable) {
+            recordMacroCommand(command)
+        }
+    }
+
+    fun sendRealtimeCommand(
+        command: String,
+        recordable: Boolean = true
+    ) {
+        bluetoothController.sendRealtime(command)
+
+        if (recordable) {
+            recordMacroCommand(command)
+        }
+    }
+
+    fun startRecording() {
+        if (isReplaying) return
+
+        recordedCommands.clear()
+        lastRecordTimeMs = System.currentTimeMillis()
+        lastRecordedCommand = ""
+        isRecording = true
+    }
+
+    fun stopRecording() {
+        isRecording = false
+
+        sendNormalCommand(
+            command = RobotCommand.stop(),
+            saveToHistory = true,
+            recordable = false
+        )
+    }
+
+    fun clearMacro() {
+        if (isRecording || isReplaying) return
+
+        recordedCommands.clear()
+        lastRecordedCommand = ""
+        lastRecordTimeMs = 0L
+    }
+
+    fun replayMacro() {
+        if (isRecording || isReplaying || recordedCommands.isEmpty()) return
+
+        val snapshot = recordedCommands.toList()
+
+        scope.launch {
+            isReplaying = true
+
+            // Dừng robot trước khi replay để tránh dính lệnh cũ
+            bluetoothController.send(
+                RobotCommand.stop(),
+                saveToHistory = true
+            )
+
+            delay(250)
+
+            snapshot.forEach { item ->
+                delay(item.delayMs)
+
+                bluetoothController.send(
+                    command = item.command,
+                    saveToHistory = false
+                )
+            }
+
+            delay(150)
+
+            bluetoothController.send(
+                RobotCommand.stop(),
+                saveToHistory = true
+            )
+
+            isReplaying = false
+        }
+    }
 
     LaunchedEffect(isConnected) {
         while (true) {
             if (isConnected) {
-                bluetoothController.send(driveCommand, saveToHistory = false)
+                sendRealtimeCommand(driveCommand)
             }
             delay(50L)
         }
@@ -128,8 +268,14 @@ fun RobotControlScreen(
                         onConnectionClick = { showConnectionDialog = true },
                         onStop = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            bluetoothController.send(RobotCommand.stop(), saveToHistory = true)
+//                            bluetoothController.send(RobotCommand.stop(), saveToHistory = true)
+                            sendNormalCommand(
+                                command = RobotCommand.stop(),
+                                saveToHistory = true,
+                                recordable = true
+                            )
                         }
+
                     )
 
                     Row(
@@ -150,10 +296,12 @@ fun RobotControlScreen(
                             gyroRoll = roll,
                             gyroTurn = gyroTurn,
                             onGyroForwardChange = { pressed ->
-                                gyroForward = if (pressed) 100 else if (gyroForward == 100) 0 else gyroForward
+                                gyroForward =
+                                    if (pressed) 100 else if (gyroForward == 100) 0 else gyroForward
                             },
                             onGyroBackwardChange = { pressed ->
-                                gyroForward = if (pressed) -100 else if (gyroForward == -100) 0 else gyroForward
+                                gyroForward =
+                                    if (pressed) -100 else if (gyroForward == -100) 0 else gyroForward
                             },
                             onGyroCalibrate = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -168,11 +316,22 @@ fun RobotControlScreen(
                             armSpeed = armSpeed,
                             onArmSpeedChange = { armSpeed = it },
                             onArmCommand = { axis1, axis2 ->
-                                bluetoothController.send(
-                                    RobotCommand.arm(axis1, axis2),
-                                    saveToHistory = true
+                                currentArmAxis1 = axis1
+                                currentArmAxis2 = axis2
+
+                                sendNormalCommand(
+                                    command = RobotCommand.arm(axis1, axis2),
+                                    saveToHistory = true,
+                                    recordable = true
                                 )
                             },
+                            isRecording = isRecording,
+                            isReplaying = isReplaying,
+                            recordedCommands = recordedCommands,
+                            onStartRecord = { startRecording() },
+                            onStopRecord = { stopRecording() },
+                            onReplayMacro = { replayMacro() },
+                            onClearMacro = { clearMacro() },
                             commandHistory = uiState.commandHistory,
                             errorMessage = uiState.errorMessage
                         )
@@ -214,7 +373,7 @@ private fun HeaderBar(
                 fontSize = 12.sp
             )
 
-            
+
         }
 
         Row(
@@ -224,7 +383,10 @@ private fun HeaderBar(
 
             StatusChip("MODE: ${mode.name}", Color(0xFF2F80ED))
             StatusChip("SPEED: $speed", Color(0xFFFFC857))
-            StatusChip(status.name, if (status == ConnectionStatus.CONNECTED) Color(0xFF2ECC71) else Color(0xFFE74C3C))
+            StatusChip(
+                status.name,
+                if (status == ConnectionStatus.CONNECTED) Color(0xFF2ECC71) else Color(0xFFE74C3C)
+            )
             ConnectionButton(
                 isConnected = status == ConnectionStatus.CONNECTED,
                 onClick = onConnectionClick
@@ -297,7 +459,12 @@ private fun ControlPanel(
                 ) {
                     JoystickPad(onMove = onJoystickMove)
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Joystick Mode", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            "Joystick Mode",
+                            color = Color.White,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                         Text("Y: tới/lùi", color = Color(0xFFAAB4C3), fontSize = 15.sp)
                         Text("X: rẽ trái/phải", color = Color(0xFFAAB4C3), fontSize = 15.sp)
                         Text("Thả joystick = dừng", color = Color(0xFFFFC857), fontSize = 15.sp)
@@ -314,8 +481,16 @@ private fun ControlPanel(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text("Gyro Drive Mode", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                            Text("Tới/lùi bằng nút lớn, rẽ bằng độ nghiêng điện thoại", color = Color(0xFFAAB4C3))
+                            Text(
+                                "Gyro Drive Mode",
+                                color = Color.White,
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                "Tới/lùi bằng nút lớn, rẽ bằng độ nghiêng điện thoại",
+                                color = Color(0xFFAAB4C3)
+                            )
                         }
                         Button(
                             onClick = onGyroCalibrate,
@@ -338,8 +513,18 @@ private fun ControlPanel(
                         )
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("ROLL", color = Color(0xFF9AA4B5), fontSize = 12.sp)
-                            Text("${gyroRoll.roundToInt()}°", color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Black)
-                            Text("TURN = $gyroTurn", color = Color(0xFFFFC857), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                "${gyroRoll.roundToInt()}°",
+                                color = Color.White,
+                                fontSize = 36.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                            Text(
+                                "TURN = $gyroTurn",
+                                color = Color(0xFFFFC857),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                         HoldButton(
                             text = "LÙI",
@@ -378,6 +563,13 @@ private fun RightDashboard(
     armSpeed: Int,
     onArmSpeedChange: (Int) -> Unit,
     onArmCommand: (axis1: Int, axis2: Int) -> Unit,
+    isRecording: Boolean,
+    isReplaying: Boolean,
+    recordedCommands: List<RecordedCommand>,
+    onStartRecord: () -> Unit,
+    onStopRecord: () -> Unit,
+    onReplayMacro: () -> Unit,
+    onClearMacro: () -> Unit,
     commandHistory: List<String>,
     errorMessage: String?
 ) {
@@ -417,6 +609,16 @@ private fun RightDashboard(
                 armSpeed = armSpeed,
                 onArmSpeedChange = onArmSpeedChange,
                 onArmCommand = onArmCommand
+            )
+
+            MacroPanel(
+                isRecording = isRecording,
+                isReplaying = isReplaying,
+                recordedCommands = recordedCommands,
+                onStartRecord = onStartRecord,
+                onStopRecord = onStopRecord,
+                onReplay = onReplayMacro,
+                onClear = onClearMacro
             )
 
             Text(
