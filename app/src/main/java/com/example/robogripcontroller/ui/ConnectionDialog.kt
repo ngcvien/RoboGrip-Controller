@@ -24,9 +24,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.example.robogripcontroller.bluetooth.BluetoothController
 import com.example.robogripcontroller.bluetooth.ConnectionStatus
 
@@ -42,7 +42,7 @@ fun ConnectionDialog(
             modifier = Modifier
                 .widthIn(min = 420.dp, max = 560.dp)
                 .border(1.dp, AppColors.Border, RoundedCornerShape(28.dp)),
-            colors = CardDefaults.cardColors(containerColor = AppColors.SurfaceStrong),
+            colors = CardDefaults.cardColors(containerColor = AppColors.Surface),
             shape = RoundedCornerShape(28.dp)
         ) {
             Column(
@@ -67,38 +67,38 @@ fun ConnectionDialog(
                     fontWeight = FontWeight.Bold
                 )
 
-                if (uiState.selectedDevice != null) {
-                    Text(
-                        text = "Selected: ${uiState.selectedDevice!!.name}",
-                        color = AppColors.TextMuted,
-                        fontSize = 13.sp
-                    )
-                } else {
-                    Text(
-                        text = "Chưa chọn thiết bị",
-                        color = AppColors.TextDim,
-                        fontSize = 13.sp
-                    )
-                }
+                Text(
+                    text = if (uiState.selectedDevice != null) {
+                        "Selected: ${uiState.selectedDevice!!.name}"
+                    } else {
+                        "No device selected"
+                    },
+                    color = AppColors.TextMuted,
+                    fontSize = 13.sp
+                )
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Button(
-                        modifier = Modifier.weight(1f),
-                        onClick = { bluetoothController.refreshPairedDevices() },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = AppColors.SurfaceSoft,
-                            contentColor = AppColors.TextMain
-                        ),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Text("Refresh")
-                    }
+                    DashboardButton(
+                        text = "REFRESH",
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(46.dp),
+                        primary = false,
+                        onClick = { bluetoothController.refreshPairedDevices() }
+                    )
 
-                    Button(
-                        modifier = Modifier.weight(1f),
+                    DashboardButton(
+                        text = if (uiState.status == ConnectionStatus.CONNECTED) {
+                            "DISCONNECT"
+                        } else {
+                            "CONNECT"
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(46.dp),
                         onClick = {
                             if (uiState.status == ConnectionStatus.CONNECTED) {
                                 bluetoothController.disconnect()
@@ -107,22 +107,8 @@ fun ConnectionDialog(
                                     bluetoothController.connect(it)
                                 }
                             }
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = AppColors.Primary,
-                            contentColor = AppColors.Background
-                        ),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Text(
-                            text = if (uiState.status == ConnectionStatus.CONNECTED) {
-                                "Disconnect"
-                            } else {
-                                "Connect"
-                            },
-                            fontWeight = FontWeight.Black
-                        )
-                    }
+                        }
+                    )
                 }
 
                 Text(
@@ -144,8 +130,8 @@ fun ConnectionDialog(
                 ) {
                     if (uiState.pairedDevices.isEmpty()) {
                         Text(
-                            text = "Không tìm thấy thiết bị đã pair. Hãy pair ESP32 trong Bluetooth Settings trước.",
-                            color = AppColors.TextDim,
+                            text = "No paired devices found. Pair the ESP32 in Android Bluetooth Settings first.",
+                            color = AppColors.TextMuted,
                             fontSize = 13.sp
                         )
                     } else {
@@ -167,7 +153,7 @@ fun ConnectionDialog(
                                         AppColors.TextMain
                                     }
                                 ),
-                                shape = RoundedCornerShape(16.dp)
+                                shape = RoundedCornerShape(18.dp)
                             ) {
                                 Text(
                                     text = device.name,
@@ -181,24 +167,22 @@ fun ConnectionDialog(
                 if (uiState.errorMessage != null) {
                     Text(
                         text = uiState.errorMessage ?: "",
-                        color = AppColors.Danger,
-                        fontSize = 13.sp
+                        color = AppColors.Primary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
 
                 Spacer(modifier = Modifier.height(2.dp))
 
-                Button(
-                    modifier = Modifier.fillMaxWidth(),
+                DashboardButton(
+                    text = "CLOSE",
                     onClick = onDismiss,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = AppColors.SurfaceSoft,
-                        contentColor = AppColors.TextMain
-                    ),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Text("Close")
-                }
+                    primary = false,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(46.dp)
+                )
             }
         }
     }

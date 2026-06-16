@@ -1,12 +1,10 @@
 package com.example.robogripcontroller.ui
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -29,14 +27,7 @@ fun ArmControlPanel(
     onGripOpenChanged: (Boolean) -> Unit,
     onStopArm: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, AppColors.Border, RoundedCornerShape(22.dp))
-            .background(AppColors.Background, RoundedCornerShape(22.dp))
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(9.dp)
-    ) {
+    ControlCard {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
@@ -48,32 +39,20 @@ fun ArmControlPanel(
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Black
                 )
-
                 Text(
-                    text = if (isGripHolding) {
-                        "Gripper holding object"
-                    } else {
-                        "Lift + latch gripper"
-                    },
+                    text = if (isGripHolding) "Gripper latch holding" else "Lift axis + gripper latch",
                     color = if (isGripHolding) AppColors.Primary else AppColors.TextMuted,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
 
-            Button(
+            DashboardButton(
+                text = "STOP ARM",
                 onClick = onStopArm,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = AppColors.Danger,
-                    contentColor = AppColors.TextMain
-                ),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Text(
-                    text = "STOP ARM",
-                    fontWeight = FontWeight.Black
-                )
-            }
+                danger = true,
+                modifier = Modifier.height(44.dp)
+            )
         }
 
         Text(
@@ -86,7 +65,8 @@ fun ArmControlPanel(
         Slider(
             value = armSpeed.toFloat(),
             onValueChange = { onArmSpeedChange(it.roundToInt()) },
-            valueRange = 80f..255f
+            valueRange = 80f..255f,
+            colors = dashboardSliderColors()
         )
 
         Row(
@@ -117,25 +97,20 @@ fun ArmControlPanel(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Button(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(56.dp),
                 onClick = onGripHold,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isGripHolding) {
-                        AppColors.Primary
-                    } else {
-                        AppColors.SurfaceSoft
-                    },
-                    contentColor = if (isGripHolding) {
-                        AppColors.Background
-                    } else {
-                        AppColors.TextMain
-                    }
+                    containerColor = if (isGripHolding) AppColors.Primary else AppColors.SurfaceSoft,
+                    contentColor = if (isGripHolding) AppColors.Background else AppColors.TextMain
                 ),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(18.dp)
             ) {
                 Text(
-                    text = if (isGripHolding) "ĐANG GẮP" else "GẮP / GIỮ",
-                    fontWeight = FontWeight.Black
+                    text = if (isGripHolding) "ĐANG GIỮ" else "GẮP / GIỮ",
+                    fontWeight = FontWeight.Black,
+                    fontSize = 13.sp
                 )
             }
 
