@@ -13,6 +13,7 @@ import androidx.lifecycle.lifecycleScope
 import com.example.robogripcontroller.bluetooth.BluetoothController
 import com.example.robogripcontroller.sensor.GyroSteeringController
 import com.example.robogripcontroller.ui.RobotControlScreen
+import com.example.robogripcontroller.ui.theme.RobogripcontrollerTheme
 
 
 
@@ -45,10 +46,12 @@ class MainActivity : ComponentActivity() {
                 onDispose { gyroController.stop() }
             }
 
-            RobotControlScreen(
-                bluetoothController = btController,
-                gyroController = gyroController
-            )
+            RobogripcontrollerTheme {
+                RobotControlScreen(
+                    bluetoothController = btController,
+                    gyroController = gyroController
+                )
+            }
         }
     }
 

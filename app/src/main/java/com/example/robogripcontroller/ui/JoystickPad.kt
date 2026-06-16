@@ -12,7 +12,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -57,29 +56,29 @@ fun JoystickPad(
             val center = Offset(this.size.width / 2f, this.size.height / 2f)
 
             drawCircle(
-                color = Color(0xFF181B22),
+                color = AppColors.SurfaceStrong,
                 radius = radiusPx,
                 center = center
             )
             drawCircle(
-                color = Color(0xFF2A2F3A),
+                color = AppColors.Border,
                 radius = radiusPx * 0.82f,
                 center = center,
                 style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4.dp.toPx())
             )
             drawCircle(
-                color = Color(0xFF3B4150),
+                color = AppColors.TextDim,
                 radius = radiusPx * 0.34f,
                 center = center,
                 style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
             )
             drawCircle(
-                color = Color(0xFFFFC857),
+                color = AppColors.Primary,
                 radius = knobRadiusPx,
                 center = center + knobOffset
             )
             drawCircle(
-                color = Color(0xFFFFE3A3),
+                color = AppColors.PrimaryHighlight,
                 radius = knobRadiusPx * 0.35f,
                 center = center + knobOffset
             )

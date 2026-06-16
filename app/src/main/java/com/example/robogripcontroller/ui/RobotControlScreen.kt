@@ -22,7 +22,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -314,163 +313,161 @@ fun RobotControlScreen(
     }
 
 
-    MaterialTheme {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = Color(0xFF07090D)
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = AppColors.Background
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(AppColors.BackgroundTop, AppColors.Background),
+                        radius = 900f
+                    )
+                )
+                .padding(14.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.radialGradient(
-                            colors = listOf(Color(0xFF18202D), Color(0xFF07090D)),
-                            radius = 900f
-                        )
-                    )
-                    .padding(14.dp)
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    HeaderBar(
-                        status = uiState.status,
-                        speed = speed,
-                        mode = mode,
-                        onConnectionClick = { showConnectionDialog = true },
-                        onStop = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                HeaderBar(
+                    status = uiState.status,
+                    speed = speed,
+                    mode = mode,
+                    onConnectionClick = { showConnectionDialog = true },
+                    onStop = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
 //                            bluetoothController.send(RobotCommand.stop(), saveToHistory = true)
+                        sendNormalCommand(
+                            command = RobotCommand.stop(),
+                            saveToHistory = true,
+                            recordable = true
+                        )
+                    }
+
+                )
+
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    ControlPanel(
+                        modifier = Modifier.weight(1.1f),
+                        mode = mode,
+                        onModeChange = { newMode ->
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            mode = newMode
+                            gyroForwardValue = 0
+                            joystickForward = 0
+                            joystickTurn = 0
+
+                            if (newMode == ControlMode.GYRO) {
+                                gyroController.calibrate()
+                            }
+
                             sendNormalCommand(
-                                command = RobotCommand.stop(),
-                                saveToHistory = true,
-                                recordable = true
+                                command = RobotCommand.drive(0, 0, speed),
+                                saveToHistory = false,
+                                recordable = false
                             )
-                        }
+                        },
+                        onJoystickMove = { forward, turn ->
+                            joystickForward = forward
+                            joystickTurn = turn
+                        },
+                        gyroState = gyroState,
+                        gyroForwardValue = gyroForwardValue,
+                        onGyroForwardChange = { value ->
+                            gyroForwardValue = value
 
-                    )
-
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        ControlPanel(
-                            modifier = Modifier.weight(1.1f),
-                            mode = mode,
-                            onModeChange = { newMode ->
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                mode = newMode
-                                gyroForwardValue = 0
-                                joystickForward = 0
-                                joystickTurn = 0
-
-                                if (newMode == ControlMode.GYRO) {
-                                    gyroController.calibrate()
-                                }
-
+                            if (value == 0 && gyroState.turn == 0) {
                                 sendNormalCommand(
                                     command = RobotCommand.drive(0, 0, speed),
                                     saveToHistory = false,
-                                    recordable = false
+                                    recordable = true
                                 )
-                            },
-                            onJoystickMove = { forward, turn ->
-                                joystickForward = forward
-                                joystickTurn = turn
-                            },
-                            gyroState = gyroState,
-                            gyroForwardValue = gyroForwardValue,
-                            onGyroForwardChange = { value ->
-                                gyroForwardValue = value
-
-                                if (value == 0 && gyroState.turn == 0) {
-                                    sendNormalCommand(
-                                        command = RobotCommand.drive(0, 0, speed),
-                                        saveToHistory = false,
-                                        recordable = true
-                                    )
-                                }
-                            },
-                            onGyroCalibrate = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                gyroController.calibrate()
-                            },
-                            onGyroSensitivityChange = { value ->
-                                gyroController.setSensitivity(value)
                             }
-                        )
+                        },
+                        onGyroCalibrate = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            gyroController.calibrate()
+                        },
+                        onGyroSensitivityChange = { value ->
+                            gyroController.setSensitivity(value)
+                        }
+                    )
 
-                        RightDashboard(
-                            modifier = Modifier.weight(0.9f),
-                            speed = speed,
-                            onSpeedChange = { speed = it },
-                            armSpeed = armSpeed,
-                            onArmSpeedChange = { armSpeed = it },
-                            isGripHolding = isGripHolding,
+                    RightDashboard(
+                        modifier = Modifier.weight(0.9f),
+                        speed = speed,
+                        onSpeedChange = { speed = it },
+                        armSpeed = armSpeed,
+                        onArmSpeedChange = { armSpeed = it },
+                        isGripHolding = isGripHolding,
 
-                            onLiftChange = { lift ->
-                                currentLiftAxis = lift
+                        onLiftChange = { lift ->
+                            currentLiftAxis = lift
 
-                                sendArmState(
-                                    liftAxis = currentLiftAxis,
-                                    gripAxis = currentGripAxis,
-                                    saveToHistory = true,
-                                    recordable = true
-                                )
-                            },
+                            sendArmState(
+                                liftAxis = currentLiftAxis,
+                                gripAxis = currentGripAxis,
+                                saveToHistory = true,
+                                recordable = true
+                            )
+                        },
 
-                            onGripHold = {
-                                isGripHolding = true
-                                currentGripAxis = -armSpeed
+                        onGripHold = {
+                            isGripHolding = true
+                            currentGripAxis = -armSpeed
 
-                                sendArmState(
-                                    liftAxis = currentLiftAxis,
-                                    gripAxis = currentGripAxis,
-                                    saveToHistory = true,
-                                    recordable = true
-                                )
-                            },
+                            sendArmState(
+                                liftAxis = currentLiftAxis,
+                                gripAxis = currentGripAxis,
+                                saveToHistory = true,
+                                recordable = true
+                            )
+                        },
 
-                            onGripOpenChanged = { pressed ->
-                                if (pressed) {
-                                    isGripHolding = false
-                                    currentGripAxis = armSpeed
-                                } else {
-                                    currentGripAxis = 0
-                                }
-
-                                sendArmState(
-                                    liftAxis = currentLiftAxis,
-                                    gripAxis = currentGripAxis,
-                                    saveToHistory = true,
-                                    recordable = true
-                                )
-                            },
-
-                            onStopArm = {
+                        onGripOpenChanged = { pressed ->
+                            if (pressed) {
                                 isGripHolding = false
-                                currentLiftAxis = 0
+                                currentGripAxis = armSpeed
+                            } else {
                                 currentGripAxis = 0
+                            }
 
-                                sendArmState(
-                                    liftAxis = 0,
-                                    gripAxis = 0,
-                                    saveToHistory = true,
-                                    recordable = true
-                                )
-                            },
-                            isRecording = isRecording,
-                            isReplaying = isReplaying,
-                            recordedCommands = recordedCommands,
-                            onStartRecord = { startRecording() },
-                            onStopRecord = { stopRecording() },
-                            onReplayMacro = { replayMacro() },
-                            onClearMacro = { clearMacro() },
-                            commandHistory = uiState.commandHistory,
-                            errorMessage = uiState.errorMessage
-                        )
-                    }
+                            sendArmState(
+                                liftAxis = currentLiftAxis,
+                                gripAxis = currentGripAxis,
+                                saveToHistory = true,
+                                recordable = true
+                            )
+                        },
+
+                        onStopArm = {
+                            isGripHolding = false
+                            currentLiftAxis = 0
+                            currentGripAxis = 0
+
+                            sendArmState(
+                                liftAxis = 0,
+                                gripAxis = 0,
+                                saveToHistory = true,
+                                recordable = true
+                            )
+                        },
+                        isRecording = isRecording,
+                        isReplaying = isReplaying,
+                        recordedCommands = recordedCommands,
+                        onStartRecord = { startRecording() },
+                        onStopRecord = { stopRecording() },
+                        onReplayMacro = { replayMacro() },
+                        onClearMacro = { clearMacro() },
+                        commandHistory = uiState.commandHistory,
+                        errorMessage = uiState.errorMessage
+                    )
                 }
             }
         }
@@ -489,8 +486,8 @@ private fun HeaderBar(
         modifier = Modifier
             .fillMaxWidth()
             .height(68.dp)
-            .border(1.dp, Color(0xFF273040), RoundedCornerShape(22.dp))
-            .background(Color(0xCC10141D), RoundedCornerShape(22.dp))
+            .border(1.dp, AppColors.Border, RoundedCornerShape(22.dp))
+            .background(AppColors.Surface, RoundedCornerShape(22.dp))
             .padding(horizontal = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
@@ -498,13 +495,13 @@ private fun HeaderBar(
         Column {
             Text(
                 text = "RoboGrip Controller",
-                color = Color.White,
+                color = AppColors.TextMain,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Black
             )
             Text(
                 text = "Tank drive + 2-axis gripper | Android Kotlin",
-                color = Color(0xFF9AA4B5),
+                color = AppColors.TextMuted,
                 fontSize = 12.sp
             )
 
@@ -516,22 +513,18 @@ private fun HeaderBar(
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
 
-            StatusChip("MODE: ${mode.name}", Color(0xFF2F80ED))
-            StatusChip("SPEED: $speed", Color(0xFFFFC857))
-//            StatusChip(
-//                status.name,
-//                if (status == ConnectionStatus.CONNECTED) Color(0xFF2ECC71) else Color(0xFFE74C3C)
-//            )
+            StatusChip("MODE: ${mode.name}", AppColors.Info)
+            StatusChip("SPEED: $speed", AppColors.Primary)
             ConnectionButton(
                 isConnected = status == ConnectionStatus.CONNECTED,
                 onClick = onConnectionClick
             )
             Button(
                 onClick = onStop,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
+                colors = ButtonDefaults.buttonColors(containerColor = AppColors.Danger),
                 shape = RoundedCornerShape(18.dp)
             ) {
-                Text("STOP", color = Color.White, fontWeight = FontWeight.Black, fontSize = 18.sp)
+                Text("STOP", color = AppColors.TextMain, fontWeight = FontWeight.Black, fontSize = 18.sp)
             }
         }
     }
@@ -546,7 +539,7 @@ private fun StatusChip(text: String, color: Color) {
             .padding(horizontal = 14.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(text = text, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text(text = text, color = AppColors.TextMain, fontSize = 12.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -564,7 +557,7 @@ private fun ControlPanel(
 ) {
     Card(
         modifier = modifier.fillMaxHeight(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xDD0D1119)),
+        colors = CardDefaults.cardColors(containerColor = AppColors.Surface),
         shape = RoundedCornerShape(26.dp)
     ) {
         Column(
@@ -596,13 +589,13 @@ private fun ControlPanel(
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
                             "Joystick Mode",
-                            color = Color.White,
+                            color = AppColors.TextMain,
                             fontSize = 22.sp,
                             fontWeight = FontWeight.Bold
                         )
-                        Text("Y: tới/lùi", color = Color(0xFFAAB4C3), fontSize = 15.sp)
-                        Text("X: rẽ trái/phải", color = Color(0xFFAAB4C3), fontSize = 15.sp)
-                        Text("Thả joystick = dừng", color = Color(0xFFFFC857), fontSize = 15.sp)
+                        Text("Y: tới/lùi", color = AppColors.TextMuted, fontSize = 15.sp)
+                        Text("X: rẽ trái/phải", color = AppColors.TextMuted, fontSize = 15.sp)
+                        Text("Thả joystick = dừng", color = AppColors.Primary, fontSize = 15.sp)
                     }
                 }
             } else {
@@ -629,13 +622,13 @@ private fun ModeButton(text: String, selected: Boolean, onClick: () -> Unit) {
     Button(
         onClick = onClick,
         colors = ButtonDefaults.buttonColors(
-            containerColor = if (selected) Color(0xFFFFC857) else Color(0xFF1B2230)
+            containerColor = if (selected) AppColors.Primary else AppColors.SurfaceSoft
         ),
         shape = RoundedCornerShape(16.dp)
     ) {
         Text(
             text = text,
-            color = if (selected) Color.Black else Color.White,
+            color = if (selected) AppColors.Background else AppColors.TextMain,
             fontWeight = FontWeight.Black
         )
     }

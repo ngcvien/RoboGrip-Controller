@@ -25,7 +25,7 @@ import kotlinx.coroutines.coroutineScope
 fun HoldButton(
     text: String,
     modifier: Modifier = Modifier,
-    primaryColor: Color = Color(0xFFFFC857),
+    primaryColor: Color = AppColors.Primary,
     height: Dp = 132.dp,
     onHoldChanged: (Boolean) -> Unit
 ) {
@@ -40,7 +40,7 @@ fun HoldButton(
                 brush = Brush.verticalGradient(
                     colors = listOf(
                         primaryColor.copy(alpha = 0.28f),
-                        Color(0xFF13161D)
+                        AppColors.SurfaceStrong
                     )
                 ),
                 shape = shape
@@ -59,7 +59,7 @@ fun HoldButton(
     ) {
         Text(
             text = text,
-            color = Color.White,
+            color = AppColors.TextMain,
             fontSize = 28.sp,
             fontWeight = FontWeight.Black
         )
