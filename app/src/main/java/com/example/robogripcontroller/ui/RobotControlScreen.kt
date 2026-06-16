@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -26,13 +27,17 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,17 +50,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.robogripcontroller.bluetooth.BluetoothController
 import com.example.robogripcontroller.bluetooth.ConnectionStatus
+import com.example.robogripcontroller.macro.RecordedCommand
 import com.example.robogripcontroller.protocol.RobotCommand
 import com.example.robogripcontroller.sensor.GyroSteeringController
+import com.example.robogripcontroller.sensor.GyroSteeringState
 import kotlinx.coroutines.delay
-import kotlin.math.roundToInt
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.rememberCoroutineScope
-import com.example.robogripcontroller.macro.RecordedCommand
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 enum class ControlMode {
     JOYSTICK,
@@ -68,7 +69,7 @@ fun RobotControlScreen(
     gyroController: GyroSteeringController
 ) {
     val uiState by bluetoothController.uiState.collectAsState()
-    val roll by gyroController.rollDegrees.collectAsState()
+    val gyroState by gyroController.state.collectAsState()
     val haptic = LocalHapticFeedback.current
 
     var mode by remember { mutableStateOf(ControlMode.JOYSTICK) }
@@ -86,15 +87,10 @@ fun RobotControlScreen(
 
     var joystickForward by remember { mutableIntStateOf(0) }
     var joystickTurn by remember { mutableIntStateOf(0) }
-    var gyroForward by remember { mutableIntStateOf(0) }
+    var gyroForwardValue by remember { mutableIntStateOf(0) }
 
-    val gyroMaxTurn = if (gyroForward == 0) 127 else 80
-    val gyroTurn = gyroController.calculateTurn(maxTurn = gyroMaxTurn)
-
-    val driveForward = if (mode == ControlMode.JOYSTICK) joystickForward else gyroForward
-    val driveTurn = if (mode == ControlMode.JOYSTICK) joystickTurn else gyroTurn
     val driveCommand by rememberUpdatedState(
-        RobotCommand.drive(driveForward, driveTurn, speed)
+        RobotCommand.drive(joystickForward, joystickTurn, speed)
     )
     val isConnected = uiState.status == ConnectionStatus.CONNECTED
 
@@ -108,6 +104,18 @@ fun RobotControlScreen(
             bluetoothController = bluetoothController,
             onDismiss = { showConnectionDialog = false }
         )
+    }
+
+    DisposableEffect(mode) {
+        if (mode == ControlMode.GYRO) {
+            gyroController.start()
+        } else {
+            gyroController.stop()
+        }
+
+        onDispose {
+            gyroController.stop()
+        }
     }
     fun normalizeCommand(command: String): String {
         return command.trim()
@@ -232,14 +240,64 @@ fun RobotControlScreen(
         }
     }
 
-    LaunchedEffect(isConnected) {
+    LaunchedEffect(isConnected, mode) {
         while (true) {
+            if (mode != ControlMode.JOYSTICK) {
+                return@LaunchedEffect
+            }
             if (isConnected) {
                 sendRealtimeCommand(driveCommand)
             }
             delay(50L)
         }
     }
+
+    LaunchedEffect(
+        mode,
+        gyroForwardValue,
+        gyroState.turn,
+        speed,
+        uiState.status
+    ) {
+        if (uiState.status != ConnectionStatus.CONNECTED) {
+            return@LaunchedEffect
+        }
+
+        if (mode != ControlMode.GYRO) {
+            return@LaunchedEffect
+        }
+
+        val isIdle = gyroForwardValue == 0 && gyroState.turn == 0
+
+        if (isIdle) {
+            sendNormalCommand(
+                command = RobotCommand.drive(0, 0, speed),
+                saveToHistory = false,
+                recordable = true
+            )
+            return@LaunchedEffect
+        }
+
+        while (true) {
+            val limitedTurn = if (gyroForwardValue == 0) {
+                gyroState.turn
+            } else {
+                gyroState.turn.coerceIn(-80, 80)
+            }
+
+            sendRealtimeCommand(
+                command = RobotCommand.drive(
+                    forward = gyroForwardValue,
+                    turn = limitedTurn,
+                    speed = speed
+                ),
+                recordable = true
+            )
+
+            delay(80)
+        }
+    }
+
 
     MaterialTheme {
         Surface(
@@ -285,27 +343,46 @@ fun RobotControlScreen(
                         ControlPanel(
                             modifier = Modifier.weight(1.1f),
                             mode = mode,
-                            onModeChange = {
+                            onModeChange = { newMode ->
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                mode = it
+                                mode = newMode
+                                gyroForwardValue = 0
+                                joystickForward = 0
+                                joystickTurn = 0
+
+                                if (newMode == ControlMode.GYRO) {
+                                    gyroController.calibrate()
+                                }
+
+                                sendNormalCommand(
+                                    command = RobotCommand.drive(0, 0, speed),
+                                    saveToHistory = false,
+                                    recordable = false
+                                )
                             },
                             onJoystickMove = { forward, turn ->
                                 joystickForward = forward
                                 joystickTurn = turn
                             },
-                            gyroRoll = roll,
-                            gyroTurn = gyroTurn,
-                            onGyroForwardChange = { pressed ->
-                                gyroForward =
-                                    if (pressed) 100 else if (gyroForward == 100) 0 else gyroForward
-                            },
-                            onGyroBackwardChange = { pressed ->
-                                gyroForward =
-                                    if (pressed) -100 else if (gyroForward == -100) 0 else gyroForward
+                            gyroState = gyroState,
+                            gyroForwardValue = gyroForwardValue,
+                            onGyroForwardChange = { value ->
+                                gyroForwardValue = value
+
+                                if (value == 0 && gyroState.turn == 0) {
+                                    sendNormalCommand(
+                                        command = RobotCommand.drive(0, 0, speed),
+                                        saveToHistory = false,
+                                        recordable = true
+                                    )
+                                }
                             },
                             onGyroCalibrate = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 gyroController.calibrate()
+                            },
+                            onGyroSensitivityChange = { value ->
+                                gyroController.setSensitivity(value)
                             }
                         )
 
@@ -383,10 +460,10 @@ private fun HeaderBar(
 
             StatusChip("MODE: ${mode.name}", Color(0xFF2F80ED))
             StatusChip("SPEED: $speed", Color(0xFFFFC857))
-            StatusChip(
-                status.name,
-                if (status == ConnectionStatus.CONNECTED) Color(0xFF2ECC71) else Color(0xFFE74C3C)
-            )
+//            StatusChip(
+//                status.name,
+//                if (status == ConnectionStatus.CONNECTED) Color(0xFF2ECC71) else Color(0xFFE74C3C)
+//            )
             ConnectionButton(
                 isConnected = status == ConnectionStatus.CONNECTED,
                 onClick = onConnectionClick
@@ -421,11 +498,11 @@ private fun ControlPanel(
     mode: ControlMode,
     onModeChange: (ControlMode) -> Unit,
     onJoystickMove: (Int, Int) -> Unit,
-    gyroRoll: Float,
-    gyroTurn: Int,
-    onGyroForwardChange: (Boolean) -> Unit,
-    onGyroBackwardChange: (Boolean) -> Unit,
-    onGyroCalibrate: () -> Unit
+    gyroState: GyroSteeringState,
+    gyroForwardValue: Int,
+    onGyroForwardChange: (Int) -> Unit,
+    onGyroCalibrate: () -> Unit,
+    onGyroSensitivityChange: (Float) -> Unit
 ) {
     Card(
         modifier = modifier.fillMaxHeight(),
@@ -472,66 +549,17 @@ private fun ControlPanel(
                 }
             } else {
                 Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.SpaceBetween
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                "Gyro Drive Mode",
-                                color = Color.White,
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                "Tới/lùi bằng nút lớn, rẽ bằng độ nghiêng điện thoại",
-                                color = Color(0xFFAAB4C3)
-                            )
-                        }
-                        Button(
-                            onClick = onGyroCalibrate,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF263247)),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Text("CALIBRATE", color = Color.White, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        HoldButton(
-                            text = "TỚI",
-                            primaryColor = Color(0xFF2ECC71),
-                            onHoldChanged = onGyroForwardChange
-                        )
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("ROLL", color = Color(0xFF9AA4B5), fontSize = 12.sp)
-                            Text(
-                                "${gyroRoll.roundToInt()}°",
-                                color = Color.White,
-                                fontSize = 36.sp,
-                                fontWeight = FontWeight.Black
-                            )
-                            Text(
-                                "TURN = $gyroTurn",
-                                color = Color(0xFFFFC857),
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        HoldButton(
-                            text = "LÙI",
-                            primaryColor = Color(0xFFE74C3C),
-                            onHoldChanged = onGyroBackwardChange
-                        )
-                    }
+                    GyroDrivePanel(
+                        gyroState = gyroState,
+                        forwardValue = gyroForwardValue,
+                        onForwardChange = onGyroForwardChange,
+                        onCalibrate = onGyroCalibrate,
+                        onSensitivityChange = onGyroSensitivityChange
+                    )
                 }
             }
         }

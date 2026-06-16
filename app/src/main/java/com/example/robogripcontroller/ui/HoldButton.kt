@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.coroutineScope
@@ -25,13 +26,14 @@ fun HoldButton(
     text: String,
     modifier: Modifier = Modifier,
     primaryColor: Color = Color(0xFFFFC857),
+    height: Dp = 132.dp,
     onHoldChanged: (Boolean) -> Unit
 ) {
     val shape = RoundedCornerShape(28.dp)
 
     Box(
         modifier = modifier
-            .height(132.dp)
+            .height(height)
             .width(210.dp)
             .border(1.dp, primaryColor.copy(alpha = 0.55f), shape)
             .background(
